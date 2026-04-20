@@ -1,0 +1,14 @@
+output "jenkins_master_role_arn"      { value = aws_iam_role.jenkins_master.arn }
+output "jenkins_master_profile_name"  { value = aws_iam_instance_profile.jenkins_master.name }
+output "jenkins_agent_role_arn"       { value = aws_iam_role.jenkins_agent.arn }
+output "jenkins_agent_profile_name"   { value = aws_iam_instance_profile.jenkins_agent.name }
+output "artifacts_bucket_name"        { value = aws_s3_bucket.jenkins_artifacts.id }
+output "backups_bucket_name"          { value = aws_s3_bucket.jenkins_backups.id }
+output "backup_plan_id"               { value = aws_backup_plan.jenkins_efs.id }
+output "backup_role_arn"              { value = aws_iam_role.backup.arn }
+output "backup_vault_name"            { value = aws_backup_vault.jenkins.name }
+output "sns_topic_arn"                { value = aws_sns_topic.jenkins_alerts.arn }
+output "master_log_group_name"        { value = aws_cloudwatch_log_group.jenkins_master.name }
+output "admin_secret_arn"             { value = aws_secretsmanager_secret.jenkins_admin.arn }
+output "ldap_secret_arn"              { value = aws_secretsmanager_secret.ldap_credentials.arn }
+output "git_secret_arn"               { value = aws_secretsmanager_secret.git_credentials.arn }

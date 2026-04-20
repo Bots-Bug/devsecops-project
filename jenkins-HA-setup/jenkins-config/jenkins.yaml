@@ -1,0 +1,275 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Jenkins Configuration as Code (JCasC)
+# This file drives 100% of Jenkins configuration - no manual UI setup needed
+# Managed via Git - apply changes by pushing and restarting Jenkins
+# ─────────────────────────────────────────────────────────────────────────
+
+jenkins:
+  systemMessage: |
+    ========================================================
+    Production Jenkins - Managed by JCasC via Terraform
+    Environment: ${ENVIRONMENT}
+    All configuration changes must go through Git + PR process
+    ========================================================
+  
+  # ─── Global Settings ────────────────────────────────────────────────────
+  numExecutors: 0           # CRITICAL: Zero executors on master - all builds on agents
+  mode: EXCLUSIVE           # Master only runs tasks assigned to it explicitly
+  quietPeriod: 5
+  scmCheckoutRetryCount: 3
+  
+  # ─── Security: CSRF Protection ────────────────────────────────────────
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: false
+  
+  # ─── Security: Disable CLI via Remoting ──────────────────────────────
+  remotingSecurity:
+    enabled: true
+  
+  # ─── Authentication: LDAP ─────────────────────────────────────────────
+  # Reads LDAP bind password from AWS Secrets Manager at runtime
+  securityRealm:
+    ldap:
+      configurations:
+        - server: "${LDAP_SERVER_URL}"
+          rootDN: "dc=example,dc=com"
+          userSearchBase: "ou=users,dc=example,dc=com"
+          userSearch: "sAMAccountName={0}"     # AD attribute
+          groupSearchBase: "ou=groups,dc=example,dc=com"
+          groupSearchFilter: "(member={0})"
+          managerDN: "cn=jenkins-svc,ou=service-accounts,dc=example,dc=com"
+          managerPasswordSecret: "${LDAP_BIND_PASSWORD}"  # Injected from Secrets Manager
+          displayNameAttributeName: "displayName"
+          mailAddressAttributeName: "mail"
+      disableMailAddressResolver: false
+      groupIdStrategy: "caseInsensitive"
+      userIdStrategy: "caseInsensitive"
+  
+  # ─── Authorization: Role-Based Access Control ─────────────────────────
+  authorizationStrategy:
+    roleBased:
+      roles:
+        global:
+          - name: "admin"
+            description: "Jenkins Administrators - full access"
+            permissions:
+              - "Overall/Administer"
+            entries:
+              - group: "CN=jenkins-admins,OU=groups,DC=example,DC=com"
+          
+          - name: "devops"
+            description: "DevOps Engineers - manage jobs and credentials"
+            permissions:
+              - "Overall/Read"
+              - "Job/Build"
+              - "Job/Cancel"
+              - "Job/Configure"
+              - "Job/Create"
+              - "Job/Delete"
+              - "Job/Discover"
+              - "Job/Move"
+              - "Job/Read"
+              - "Job/Workspace"
+              - "Run/Delete"
+              - "Run/Replay"
+              - "Run/Update"
+              - "View/Configure"
+              - "View/Create"
+              - "View/Delete"
+              - "View/Read"
+              - "Credentials/Create"
+              - "Credentials/Update"
+              - "Credentials/View"
+              - "Credentials/Delete"
+            entries:
+              - group: "CN=jenkins-devops,OU=groups,DC=example,DC=com"
+          
+          - name: "developer"
+            description: "Developers - build and view their own jobs"
+            permissions:
+              - "Overall/Read"
+              - "Job/Build"
+              - "Job/Cancel"
+              - "Job/Create"
+              - "Job/Read"
+              - "Job/Workspace"
+              - "Run/Replay"
+              - "View/Read"
+            entries:
+              - group: "CN=jenkins-developers,OU=groups,DC=example,DC=com"
+          
+          - name: "viewer"
+            description: "Read-only access for stakeholders"
+            permissions:
+              - "Overall/Read"
+              - "Job/Read"
+              - "View/Read"
+            entries:
+              - group: "CN=jenkins-viewers,OU=groups,DC=example,DC=com"
+
+  # ─── Nodes: Permanent Agents ───────────────────────────────────────────
+  nodes:
+    - permanent:
+        labelString: "linux agent build"
+        launcher:
+          jnlp:
+            workDirSettings:
+              disabled: false
+              internalDir: "remoting"
+        name: "linux-agent-1"
+        numExecutors: 4
+        remoteFS: "/home/jenkins-agent/workspace"
+        retentionStrategy: "always"
+    
+    - permanent:
+        labelString: "linux agent build"
+        launcher:
+          jnlp:
+            workDirSettings:
+              disabled: false
+              internalDir: "remoting"
+        name: "linux-agent-2"
+        numExecutors: 4
+        remoteFS: "/home/jenkins-agent/workspace"
+        retentionStrategy: "always"
+    
+    - permanent:
+        labelString: "windows dotnet msbuild"
+        launcher:
+          jnlp:
+            workDirSettings:
+              disabled: false
+              internalDir: "remoting"
+        name: "windows-agent-1"
+        numExecutors: 2
+        remoteFS: "C:\\jenkins-agent\\workspace"
+        retentionStrategy: "always"
+  
+  # ─── JNLP Agent Port ─────────────────────────────────────────────────
+  slaveAgentPort: 50000
+  agentProtocols:
+    - "JNLP4-connect"  # Use JNLP4 - most secure protocol (TLS, HmacSHA256)
+  
+  # ─── Global Tool Configuration ────────────────────────────────────────
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "JAVA_HOME"
+            value: "/usr/lib/jvm/java-17-openjdk-amd64"
+          - key: "ENVIRONMENT"
+            value: "${ENVIRONMENT}"
+
+# ─── Tool Installations ──────────────────────────────────────────────────
+tool:
+  jdk:
+    installations:
+      - name: "JDK-17"
+        home: "/usr/lib/jvm/java-17-openjdk-amd64"
+  
+  maven:
+    installations:
+      - name: "Maven-3.9"
+        properties:
+          - installSource:
+              installers:
+                - maven:
+                    id: "3.9.6"
+  
+  git:
+    installations:
+      - name: "Default"
+        home: "/usr/bin/git"
+
+# ─── Credentials ─────────────────────────────────────────────────────────
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          # Git credentials - token fetched from AWS Secrets Manager
+          - usernamePassword:
+              scope: GLOBAL
+              id: "git-credentials"
+              description: "Git service account credentials"
+              username: "${GIT_USERNAME}"
+              password: "${GIT_TOKEN}"
+          
+          # AWS credentials use IAM role - NO static keys here
+          # The aws-credentials plugin reads from instance profile automatically
+          
+          # For cross-account deployments, use assumed roles:
+          # - awsIamUsage - IAM Role ARN approach
+
+# ─── Global Pipeline Libraries ───────────────────────────────────────────
+unclassified:
+  globalLibraries:
+    libraries:
+      - name: "jenkins-shared-library"
+        defaultVersion: "main"
+        implicit: false  # Developers must explicitly load: @Library('jenkins-shared-library')
+        allowVersionOverride: true
+        retriever:
+          modernSCM:
+            scm:
+              git:
+                remote: "https://github.com/your-org/jenkins-shared-library.git"
+                credentialsId: "git-credentials"
+  
+  # ─── Email Notification ─────────────────────────────────────────────
+  mailer:
+    smtpHost: "smtp.example.com"
+    smtpPort: "587"
+    useSsl: false
+    useTls: true
+    defaultSuffix: "@example.com"
+    replyToAddress: "jenkins-noreply@example.com"
+  
+  # ─── Audit Trail ──────────────────────────────────────────────────────
+  auditTrailPlugin:
+    logBuildCause: true
+    pattern: ".*"
+    loggers:
+      - logFile:
+          count: 10
+          limit: 50
+          log: "/var/lib/jenkins/logs/audit.log"
+  
+  # ─── Timestamper ─────────────────────────────────────────────────────
+  timestamperConfig:
+    systemTimeFormat: "yyyy-MM-dd HH:mm:ss z"
+    elapsedTimeFormat: "'<b>'HH:mm:ss.S'</b> '"
+  
+  # ─── Jenkins URL ────────────────────────────────────────────────────
+  location:
+    url: "https://jenkins.internal.example.com/"
+    adminAddress: "Jenkins Admin <jenkins-admin@example.com>"
+  
+  # ─── Markup Formatter - Disable raw HTML (XSS prevention) ────────────
+  markupFormatter:
+    safeHtml:
+      disableSyntaxHighlighting: false
+
+# ─── Security Settings ───────────────────────────────────────────────────
+security:
+  # Disable anonymous access
+  apiToken:
+    creationOfLegacyTokenEnabled: false
+    tokenGenerationOnCreationEnabled: false
+    usageStatisticsEnabled: true
+  
+  # Disable built-in user creation after setup
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: true
+  
+  # Remoting security
+  sSHD:
+    port: -1  # Disable SSH daemon on Jenkins master
+  
+  scriptApproval:
+    approvedSignatures: []  # Start empty - approve signatures explicitly via UI
+
+# ─── JVM Arguments (set via systemd override) ───────────────────────────
+# These are set in the systemd service file, not here
+# -Djenkins.install.runSetupWizard=false
+# -Xmx4g -Xms2g
+# -Djava.awt.headless=true

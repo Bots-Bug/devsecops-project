@@ -1,0 +1,11 @@
+output "bastion_public_ip"          { value = aws_instance.bastion.public_ip }
+output "jenkins_master_private_ip"  { value = aws_instance.jenkins_master.private_ip }
+output "jenkins_master_id"          { value = aws_instance.jenkins_master.id }
+output "linux_agent_ids"            { value = aws_instance.jenkins_linux_agent[*].id }
+output "linux_agent_private_ips"    { value = aws_instance.jenkins_linux_agent[*].private_ip }
+output "windows_agent_id"           { value = aws_instance.jenkins_windows_agent.id }
+output "windows_agent_private_ip"   { value = aws_instance.jenkins_windows_agent.private_ip }
+output "alb_dns_name"               { value = aws_lb.jenkins.dns_name }
+output "alb_arn"                    { value = aws_lb.jenkins.arn }
+output "efs_id"                     { value = aws_efs_file_system.jenkins_home.id }
+output "efs_dns_name"               { value = aws_efs_file_system.jenkins_home.dns_name }

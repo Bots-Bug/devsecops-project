@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────
+# Jenkins Plugin List - Pinned for Reproducible Builds
+# Only ESSENTIAL plugins - keep the list minimal
+# More plugins = more attack surface + slower startup
+# ─────────────────────────────────────────────────────
+
+# Core Pipeline
+workflow-aggregator:latest
+workflow-job:latest
+workflow-cps:latest
+pipeline-stage-view:latest
+pipeline-graph-analysis:latest
+pipeline-milestone-step:latest
+
+# Source Control
+git:latest
+git-client:latest
+scm-api:latest
+branch-api:latest
+workflow-multibranch:latest
+
+# Configuration as Code
+configuration-as-code:latest
+
+# Security & Authentication
+ldap:latest
+role-strategy:latest
+matrix-auth:latest
+credentials:latest
+credentials-binding:latest
+ssh-credentials:latest
+plain-credentials:latest
+
+# AWS Integration
+aws-credentials:latest
+aws-secrets-manager-credentials-provider:latest
+
+# Agent & Build
+ssh-agent:latest
+build-timeout:latest
+timestamper:latest
+ws-cleanup:latest
+ant:latest
+gradle:latest
+maven-plugin:latest
+
+# Notifications
+mailer:latest
+email-ext:latest
+
+# Audit & Compliance
+audit-trail:latest
+
+# Pipeline Utilities
+job-dsl:latest
+pipeline-utility-steps:latest
+copyartifact:latest
+
+# Markup
+antisamy-markup-formatter:latest
+
+# Monitoring
+cloudbees-disk-usage-simple:latest
+monitoring:latest
+
+# ─────────────────────────────────────────────────────
+# PLUGINS TO AVOID (and why):
+# ─────────────────────────────────────────────────────
+# amazon-ec2          - Use Terraform for infra, not Jenkins
+# blueocean           - Heavy, multiple plugins, often broken
+# publish-over-ssh    - Insecure, use Pipeline SSH steps instead
+# build-pipeline-plugin - Legacy, use Declarative Pipeline
+# parameterized-trigger - Complex, use Pipeline directly
+# rebuild             - Encourages bad practices
+# thinBackup          - Replaced by EFS + AWS Backup strategy
+# backup              - Same as above
+# Any plugin with "free-style" focus - use Pipeline instead
