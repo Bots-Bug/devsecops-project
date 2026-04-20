@@ -1,1 +1,17 @@
-*.terrafrom*
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+# Sensitive files
+*.pem
+*.key
+*.env
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
