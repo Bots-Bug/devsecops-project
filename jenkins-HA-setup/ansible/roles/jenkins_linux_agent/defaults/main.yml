@@ -1,0 +1,12 @@
+---
+agent_user: "jenkins-agent"
+agent_home: "/home/jenkins-agent"
+agent_jar_path: "/home/jenkins-agent/agent.jar"
+agent_workspace: "/home/jenkins-agent/workspace"
+environment: "prod"
+aws_region: "us-east-1"
+
+# These are resolved dynamically in the playbook pre_tasks
+jenkins_master_ip: ""
+agent_name: ""
+agent_secret: ""

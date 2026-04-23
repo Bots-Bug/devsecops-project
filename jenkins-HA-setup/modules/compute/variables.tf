@@ -56,3 +56,8 @@ variable "common_tags" {
   type    = map(string)
   default = {}
 }
+
+variable "bastion_profile" {
+  type        = string
+  description = "IAM instance profile for bastion (Ansible dynamic inventory)"
+}

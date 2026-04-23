@@ -1,0 +1,180 @@
+---
+# Jenkins Master configuration tasks
+
+# ── Jenkins User ─────────────────────────────────────────────────────────
+
+- name: Create jenkins group
+  group:
+    name: "{{ jenkins_group }}"
+    state: present
+
+- name: Create jenkins user
+  user:
+    name: "{{ jenkins_user }}"
+    group: "{{ jenkins_group }}"
+    home: "{{ jenkins_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
+    state: present
+
+# ── EFS Mount ─────────────────────────────────────────────────────────────
+
+- name: Create Jenkins home directory
+  file:
+    path: "{{ jenkins_home }}"
+    state: directory
+    owner: "{{ jenkins_user }}"
+    group: "{{ jenkins_group }}"
+    mode: "0750"
+
+- name: Mount EFS for Jenkins home
+  mount:
+    src: "{{ efs_id }}:/"
+    path: "{{ jenkins_home }}"
+    fstype: efs
+    opts: "tls,accesspoint={{ efs_ap_id }},_netdev"
+    state: mounted
+  when: efs_id != "" and efs_ap_id != ""
+  register: efs_mount_result
+  ignore_errors: true   # Jenkins still works on local disk if EFS fails
+  tags: efs
+
+- name: Warn if EFS mount failed
+  debug:
+    msg: >
+      WARNING: EFS mount failed. Jenkins will use local disk.
+      Data will NOT survive instance replacement.
+      Check EFS mount targets are in the same AZ as this instance.
+  when: efs_mount_result is defined and efs_mount_result.failed
+
+- name: Set jenkins ownership on JENKINS_HOME (after mount)
+  file:
+    path: "{{ jenkins_home }}"
+    owner: "{{ jenkins_user }}"
+    group: "{{ jenkins_group }}"
+    state: directory
+  tags: efs
+
+# ── Jenkins WAR ───────────────────────────────────────────────────────────
+
+- name: Create Jenkins installation directory
+  file:
+    path: /opt/jenkins
+    state: directory
+    owner: "{{ jenkins_user }}"
+    group: "{{ jenkins_group }}"
+    mode: "0755"
+
+- name: Check if Jenkins WAR already exists
+  stat:
+    path: "{{ jenkins_war_path }}"
+  register: jenkins_war
+
+- name: Download Jenkins WAR (LTS)
+  get_url:
+    url: "{{ jenkins_war_url }}"
+    dest: "{{ jenkins_war_path }}"
+    owner: "{{ jenkins_user }}"
+    group: "{{ jenkins_group }}"
+    mode: "0644"
+    timeout: 120
+  when: not jenkins_war.stat.exists
+  notify: restart jenkins
+  tags: jenkins_install
+
+# ── Systemd Service ───────────────────────────────────────────────────────
+
+- name: Deploy Jenkins systemd service from template
+  template:
+    src: jenkins.service.j2
+    dest: /etc/systemd/system/jenkins.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart jenkins
+  tags: systemd
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: true
+
+- name: Enable and start Jenkins service
+  systemd:
+    name: jenkins
+    state: started
+    enabled: true
+  tags: jenkins_start
+
+- name: Wait for Jenkins to respond on port {{ jenkins_port }}
+  uri:
+    url: "http://localhost:{{ jenkins_port }}/login"
+    status_code: 200
+  register: jenkins_health
+  retries: 30        # 30 retries
+  delay: 10          # 10 seconds between retries = 5 minute timeout
+  until: jenkins_health.status == 200
+  tags: jenkins_start
+
+- name: Jenkins is UP
+  debug:
+    msg: "Jenkins is running at http://{{ ansible_host }}:{{ jenkins_port }}"
+
+# ── Get Initial Admin Password ────────────────────────────────────────────
+
+- name: Check if initial admin password file exists
+  stat:
+    path: "{{ jenkins_home }}/secrets/initialAdminPassword"
+  register: admin_password_file
+
+- name: Read initial admin password
+  slurp:
+    src: "{{ jenkins_home }}/secrets/initialAdminPassword"
+  register: admin_password
+  when: admin_password_file.stat.exists
+
+- name: Show initial admin password
+  debug:
+    msg: >
+      ============================================================
+      Jenkins is UP. Initial admin password:
+      {{ admin_password.content | b64decode | trim }}
+
+      Open Jenkins: http://{{ ansible_host }}:{{ jenkins_port }}/
+      (Use ALB URL in browser, not private IP)
+      ============================================================
+  when: admin_password_file.stat.exists
+
+# ── Backup Script ─────────────────────────────────────────────────────────
+
+- name: Deploy backup script
+  copy:
+    dest: /usr/local/bin/jenkins-backup.sh
+    content: |
+      #!/bin/bash
+      TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+      tar czf /tmp/jenkins-config-${TIMESTAMP}.tar.gz \
+        -C "{{ jenkins_home }}" jobs users config.xml credentials.xml 2>/dev/null || true
+      aws s3 cp /tmp/jenkins-config-${TIMESTAMP}.tar.gz \
+        "s3://{{ backups_bucket }}/jenkins-backups/${TIMESTAMP}/jenkins-config.tar.gz" \
+        --region "{{ aws_region }}" || true
+      rm -f /tmp/jenkins-config-${TIMESTAMP}.tar.gz
+      echo "Backup done: ${TIMESTAMP}"
+    mode: "0755"
+    owner: "{{ jenkins_user }}"
+    group: "{{ jenkins_group }}"
+  when: backups_bucket != ""
+  tags: backup
+
+- name: Set up daily backup cron job
+  cron:
+    name: "Jenkins config backup"
+    user: "{{ jenkins_user }}"
+    hour: "2"
+    minute: "0"
+    job: "/usr/local/bin/jenkins-backup.sh >> /var/log/jenkins-backup.log 2>&1"
+    state: present
+  when: backups_bucket != ""
+  tags: backup

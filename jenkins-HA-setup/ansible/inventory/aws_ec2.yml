@@ -1,0 +1,39 @@
+# Dynamic inventory using AWS EC2 API
+# This file is auto-discovered by Ansible because it ends in aws_ec2.yml
+# It queries AWS EC2 API and groups instances by their tags
+
+plugin: amazon.aws.aws_ec2
+
+# AWS region to query
+regions:
+  - us-east-1   # Change to match your var.aws_region
+
+# Only return running instances with the jenkins project tag
+filters:
+  tag:Project: jenkins
+  tag:Environment: prod
+  instance-state-name: running
+
+# Use private IP because Ansible runs FROM the bastion, inside the VPC
+# If running from outside, change to 'public-ip-address' and use jump host
+hostnames:
+  - private-ip-address
+
+# Group instances by their Role tag value
+# tag: Role = jenkins-master    → group: jenkins_master
+# tag: Role = jenkins-agent-linux → group: jenkins_agent_linux
+keyed_groups:
+  - prefix: ""
+    key: tags.Role
+    separator: ""
+
+# Add useful variables to each host
+compose:
+  ansible_host: private_ip_address
+  instance_name: tags.Name
+  instance_id: instance_id
+  instance_type: instance_type
+
+# Include all regions in group name (useful when multi-region later)
+include_filters:
+  - tag:Project: jenkins

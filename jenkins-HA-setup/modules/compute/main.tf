@@ -109,6 +109,7 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids      = [var.bastion_sg_id]
   key_name                    = var.key_name
   associate_public_ip_address = true
+  iam_instance_profile        = var.bastion_profile
 
   metadata_options {
     http_endpoint               = "enabled"
@@ -124,13 +125,7 @@ resource "aws_instance" "bastion" {
     delete_on_termination = true
   }
 
-  user_data = <<-EOF
-    #!/bin/bash
-    yum update -y
-    # Disable password auth — key only
-    sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-    systemctl restart sshd
-  EOF
+user_data = file("${path.module}/../../scripts/bastion_userdata.sh")
 
   tags = merge(var.common_tags, {
     Name = "${local.name_prefix}-bastion"
@@ -170,15 +165,7 @@ resource "aws_instance" "jenkins_master" {
     kms_key_id            = var.kms_key_arn
     delete_on_termination = false  # keep root on termination for debug
   }
-
-  user_data = templatefile("${path.module}/../../scripts/jenkins_master_userdata.sh", {
-    efs_id              = aws_efs_file_system.jenkins_home.id
-    efs_access_point_id = aws_efs_access_point.jenkins.id
-    aws_region          = var.aws_region
-    environment         = var.environment
-    project             = var.project
-    backups_bucket      = var.backups_bucket_name
-  })
+  user_data = file("${path.module}/../../scripts/jenkins_master_userdata.sh")
 
   depends_on = [aws_efs_mount_target.jenkins_home]
 
@@ -236,14 +223,7 @@ resource "aws_instance" "jenkins_linux_agent" {
     delete_on_termination = true
   }
 
-  user_data = templatefile("${path.module}/../../scripts/jenkins_linux_agent_userdata.sh", {
-    jenkins_master_private_ip = aws_instance.jenkins_master.private_ip
-    aws_region                = var.aws_region
-    environment               = var.environment
-    agent_number              = count.index + 1
-  })
-
-  depends_on = [aws_instance.jenkins_master]
+  user_data = file("${path.module}/../../scripts/jenkins_linux_agent_userdata.sh")
 
   tags = merge(var.common_tags, {
     Name = "${local.name_prefix}-linux-agent-${count.index + 1}"

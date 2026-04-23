@@ -184,6 +184,26 @@ resource "aws_security_group_rule" "master_outbound" {
   description       = "All outbound"
 }
 
+resource "aws_security_group_rule" "master_http_from_linux_agent" {
+  type                     = "ingress"
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.jenkins_linux_agent.id
+  security_group_id        = aws_security_group.jenkins_master.id
+  description              = "Jenkins port from Linux agents for agent.jar download"
+}
+
+resource "aws_security_group_rule" "master_http_from_windows_agent" {
+  type                     = "ingress"
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.jenkins_windows_agent.id
+  security_group_id        = aws_security_group.jenkins_master.id
+  description              = "Jenkins port from Windows agent for agent.jar download"
+}
+
 # ─── Security Group: Linux Agents ─────────────────────────────────────────
 
 resource "aws_security_group" "jenkins_linux_agent" {

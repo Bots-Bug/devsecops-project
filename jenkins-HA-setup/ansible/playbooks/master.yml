@@ -1,0 +1,31 @@
+---
+# Jenkins Master Configuration Playbook
+# Installs Java, downloads Jenkins WAR, mounts EFS, starts Jenkins
+#
+# Required extra vars (pass with -e or fill in group_vars/jenkins_master.yml):
+#   efs_id         - EFS filesystem ID from: terraform output efs_id
+#   efs_ap_id      - EFS access point ID from: terraform output efs_access_point_id
+#   backups_bucket - S3 bucket from: terraform output backups_bucket
+#
+# Usage:
+#   ansible-playbook playbooks/master.yml \
+#     -e "efs_id=fs-0abc123 efs_ap_id=fsap-0abc123 backups_bucket=jenkins-prod-backups-123456"
+
+- name: Configure Jenkins Master
+  hosts: jenkins-master      # Matches tag Role: jenkins-master via dynamic inventory
+  become: true               # sudo for package installs and service management
+  gather_facts: true
+
+  pre_tasks:
+    - name: Wait for SSH to be available
+      wait_for_connection:
+        timeout: 300
+        delay: 10
+
+    - name: Confirm we are on the correct host
+      debug:
+        msg: "Configuring Jenkins Master on {{ inventory_hostname }} ({{ instance_name | default('unknown') }})"
+
+  roles:
+    - role: common            # Java install, base packages
+    - role: jenkins_master    # Jenkins WAR, EFS mount, service

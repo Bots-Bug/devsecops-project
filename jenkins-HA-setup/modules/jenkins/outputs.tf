@@ -12,3 +12,4 @@ output "master_log_group_name"        { value = aws_cloudwatch_log_group.jenkins
 output "admin_secret_arn"             { value = aws_secretsmanager_secret.jenkins_admin.arn }
 output "ldap_secret_arn"              { value = aws_secretsmanager_secret.ldap_credentials.arn }
 output "git_secret_arn"               { value = aws_secretsmanager_secret.git_credentials.arn }
+output "bastion_profile_name"         { value = aws_iam_instance_profile.bastion.name }

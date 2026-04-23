@@ -1,0 +1,91 @@
+---
+# Common tasks applied to ALL Jenkins hosts (master and agents)
+
+- name: Wait for yum lock to be released
+  shell: |
+    while fuser /var/run/yum.pid >/dev/null 2>&1; do
+      echo "Waiting for yum lock..."
+      sleep 5
+    done
+    echo "yum lock released"
+  changed_when: false
+  timeout: 120
+
+- name: Update all packages
+  yum:
+    name: "*"
+    state: latest
+    update_cache: true
+  tags: packages
+
+- name: Install base packages
+  yum:
+    name: "{{ base_packages }}"
+    state: present
+  tags: packages
+
+- name: Disable and stop firewalld
+  systemd:
+    name: firewalld
+    state: stopped
+    enabled: false
+  ignore_errors: true   # Not critical if already disabled
+  tags: firewall
+
+- name: Create Java installation directory
+  file:
+    path: /opt/java
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Check if Java is already installed
+  stat:
+    path: "{{ java_home }}/bin/java"
+  register: java_binary
+
+- name: Download Amazon Corretto {{ java_version }}
+  get_url:
+    url: "{{ java_download_url }}"
+    dest: "/tmp/{{ java_tarball }}"
+    timeout: 120
+    mode: "0644"
+  when: not java_binary.stat.exists
+  tags: java
+
+- name: Extract Java tarball
+  unarchive:
+    src: "/tmp/{{ java_tarball }}"
+    dest: /opt/java/
+    remote_src: true
+    creates: "{{ java_home }}/bin/java"
+  when: not java_binary.stat.exists
+  tags: java
+
+- name: Remove Java tarball after extraction
+  file:
+    path: "/tmp/{{ java_tarball }}"
+    state: absent
+  when: not java_binary.stat.exists
+  tags: java
+
+- name: Set JAVA_HOME system-wide in /etc/profile.d/
+  copy:
+    dest: /etc/profile.d/java.sh
+    content: |
+      export JAVA_HOME={{ java_home }}
+      export PATH=$JAVA_HOME/bin:$PATH
+    mode: "0644"
+  tags: java
+
+- name: Verify Java installation
+  command: "{{ java_home }}/bin/java -version"
+  register: java_version_output
+  changed_when: false
+  tags: java
+
+- name: Show Java version
+  debug:
+    msg: "{{ java_version_output.stderr }}"
+  tags: java

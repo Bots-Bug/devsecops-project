@@ -1,0 +1,12 @@
+# Variables applied only to Linux agent hosts
+
+# Agent JAR — downloaded from master at runtime
+agent_jar_path: "{{ agent_home }}/agent.jar"
+agent_workspace: "{{ agent_home }}/workspace"
+
+# Master connection — Ansible resolves this from the jenkins_master group
+# No hardcoding needed — see jenkins_linux_agent role tasks
+
+# Secrets Manager path for agent secret
+# Format: jenkins-{env}/agents/{agent-name}/secret
+secrets_manager_prefix: "jenkins-{{ environment }}/agents"

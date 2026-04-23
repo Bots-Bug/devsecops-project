@@ -1,0 +1,24 @@
+[Unit]
+Description=Jenkins Agent {{ agent_name }}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ agent_user }}
+Group={{ agent_user }}
+WorkingDirectory={{ agent_home }}
+Environment="JAVA_HOME={{ java_home }}"
+ExecStart={{ java_home }}/bin/java \
+  -jar {{ agent_jar_path }} \
+  -url http://{{ jenkins_master_ip }}:8080/ \
+  -name {{ agent_name }} \
+  -secret {{ agent_secret }} \
+  -workDir {{ agent_workspace }} \
+  -failIfWorkDirIsMissing
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

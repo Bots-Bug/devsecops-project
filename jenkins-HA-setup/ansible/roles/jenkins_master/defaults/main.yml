@@ -1,0 +1,15 @@
+---
+jenkins_war_url: "https://get.jenkins.io/war-stable/latest/jenkins.war"
+jenkins_war_path: "/opt/jenkins/jenkins.war"
+jenkins_home: "/var/lib/jenkins"
+jenkins_port: 8080
+jenkins_user: "jenkins"
+jenkins_group: "jenkins"
+jenkins_jvm_opts: "-Xmx2g -Xms512m -Djava.awt.headless=true -Duser.timezone=UTC"
+
+# EFS — override via -e on command line or group_vars/jenkins_master.yml
+efs_id: ""
+efs_ap_id: ""
+
+backups_bucket: ""
+aws_region: "us-east-1"

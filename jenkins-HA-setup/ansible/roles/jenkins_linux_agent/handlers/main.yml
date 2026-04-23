@@ -1,0 +1,10 @@
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: true
+
+- name: restart jenkins-agent
+  systemd:
+    name: jenkins-agent
+    state: restarted
+  ignore_errors: true

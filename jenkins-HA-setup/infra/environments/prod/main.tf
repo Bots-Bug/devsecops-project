@@ -104,4 +104,5 @@ module "compute" {
   jenkins_agent_instance_type  = var.jenkins_agent_instance_type
   linux_agent_count            = var.linux_agent_count
   common_tags                  = local.common_tags
+  bastion_profile              = module.jenkins.bastion_profile_name
 }

@@ -1,0 +1,143 @@
+---
+# Jenkins Linux Agent configuration tasks
+
+# ── Determine agent name from hostname or instance name ──────────────────
+
+- name: Set agent name from instance tag
+  set_fact:
+    # Uses the EC2 instance Name tag e.g. "jenkins-prod-linux-agent-1"
+    # Strips the prefix to get just "linux-agent-1"
+    agent_name: "{{ instance_name | regex_replace('^jenkins-prod-', '') | default('linux-agent-1') }}"
+
+- name: Show agent name
+  debug:
+    msg: "Configuring agent: {{ agent_name }} → connecting to master: {{ jenkins_master_ip }}"
+
+# ── Agent User ────────────────────────────────────────────────────────────
+
+- name: Create jenkins-agent user
+  user:
+    name: "{{ agent_user }}"
+    home: "{{ agent_home }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+
+- name: Create workspace directory
+  file:
+    path: "{{ agent_workspace }}"
+    state: directory
+    owner: "{{ agent_user }}"
+    group: "{{ agent_user }}"
+    mode: "0755"
+
+# ── Download agent.jar from Jenkins Master ────────────────────────────────
+
+- name: Wait for Jenkins master to be reachable on port 8080
+  uri:
+    url: "http://{{ jenkins_master_ip }}:8080/login"
+    status_code: 200
+  register: master_health
+  retries: 30
+  delay: 10
+  until: master_health.status == 200
+
+- name: Download agent.jar from Jenkins master
+  get_url:
+    url: "http://{{ jenkins_master_ip }}:8080/jnlpJars/agent.jar"
+    dest: "{{ agent_jar_path }}"
+    owner: "{{ agent_user }}"
+    group: "{{ agent_user }}"
+    mode: "0644"
+    force: true     # Always download fresh copy (ensures version matches master)
+  tags: agent_jar
+
+# ── Fetch Agent Secret from AWS Secrets Manager ───────────────────────────
+
+- name: Fetch agent secret from AWS Secrets Manager
+  # The secret path format: jenkins-prod/agents/linux-agent-1/secret
+  # You must create this secret AFTER creating the node in Jenkins UI
+  command: >
+    aws secretsmanager get-secret-value
+    --secret-id "jenkins-{{ environment }}/agents/{{ agent_name }}/secret"
+    --region "{{ aws_region }}"
+    --query SecretString
+    --output text
+  register: secret_raw
+  changed_when: false
+  failed_when: false   # Don't fail if secret doesn't exist yet — we handle below
+
+- name: Parse agent secret from JSON
+  set_fact:
+    agent_secret: "{{ (secret_raw.stdout | from_json).secret }}"
+  when:
+    - secret_raw.rc == 0
+    - secret_raw.stdout != ""
+
+- name: Warn if agent secret not found
+  debug:
+    msg: |
+      ============================================================
+      AGENT SECRET NOT FOUND for {{ agent_name }}
+
+      The secret does not exist in Secrets Manager yet.
+      You must:
+        1. Open Jenkins UI and create the agent node:
+           Manage Jenkins > Nodes > New Node
+           Name: {{ agent_name }}
+           Type: Permanent Agent
+           Remote root: {{ agent_workspace }}
+           Labels: linux agent build
+           Launch method: Launch agent by connecting it to the controller
+        2. Click on the node, copy the -secret value shown
+        3. Store it:
+           aws secretsmanager create-secret \
+             --name "jenkins-{{ environment }}/agents/{{ agent_name }}/secret" \
+             --secret-string '{"secret":"PASTE_HERE"}' \
+             --region {{ aws_region }}
+        4. Re-run this playbook:
+           ansible-playbook playbooks/linux_agent.yml
+      ============================================================
+  when: agent_secret is not defined or agent_secret == ""
+
+# ── Systemd Service ───────────────────────────────────────────────────────
+
+- name: Deploy Jenkins agent systemd service
+  template:
+    src: jenkins-agent.service.j2
+    dest: /etc/systemd/system/jenkins-agent.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart jenkins-agent
+  when: agent_secret is defined and agent_secret != ""
+  tags: systemd
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: true
+
+- name: Enable and start Jenkins agent service
+  systemd:
+    name: jenkins-agent
+    state: started
+    enabled: true
+  when: agent_secret is defined and agent_secret != ""
+  tags: agent_start
+
+- name: Wait for agent to connect (check service is running)
+  systemd:
+    name: jenkins-agent
+  register: agent_service
+  retries: 6
+  delay: 5
+  until: agent_service.status.ActiveState == "active"
+  when: agent_secret is defined and agent_secret != ""
+  tags: agent_start
+
+- name: Agent connected successfully
+  debug:
+    msg: "Agent {{ agent_name }} service is active. Check Jenkins UI to confirm Online status."
+  when: agent_secret is defined and agent_secret != ""

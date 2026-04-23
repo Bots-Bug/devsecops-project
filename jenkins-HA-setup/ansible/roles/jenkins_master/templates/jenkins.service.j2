@@ -1,0 +1,21 @@
+[Unit]
+Description=Jenkins CI
+After=network.target
+
+[Service]
+User={{ jenkins_user }}
+Group={{ jenkins_group }}
+WorkingDirectory=/opt/jenkins
+Environment="JAVA_HOME={{ java_home }}"
+Environment="JENKINS_HOME={{ jenkins_home }}"
+ExecStart={{ java_home }}/bin/java \
+  {{ jenkins_jvm_opts }} \
+  -jar {{ jenkins_war_path }} \
+  --httpPort={{ jenkins_port }}
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

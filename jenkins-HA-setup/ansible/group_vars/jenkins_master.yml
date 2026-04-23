@@ -1,0 +1,20 @@
+# Variables applied only to Jenkins master hosts
+
+# Jenkins WAR — use stable LTS
+jenkins_war_url: "https://get.jenkins.io/war-stable/latest/jenkins.war"
+
+# JVM memory settings
+# POC: Xmx2g. Production: Xmx4g (for m5.xlarge with 16GB RAM)
+jenkins_jvm_opts: "-Xmx2g -Xms512m -Djava.awt.headless=true -Duser.timezone=UTC"
+
+# EFS variables — populated from Terraform outputs at runtime
+# Set these when running the playbook:
+#   ansible-playbook playbooks/master.yml -e "efs_id=fs-xxx efs_ap_id=fsap-xxx"
+# Or set them here after first terraform apply
+efs_id: ""           # Fill after: terraform output efs_id
+efs_ap_id: ""        # Fill after: terraform output efs_access_point_id
+efs_mount_point: "{{ jenkins_home }}"
+
+# S3 backup bucket
+# Fill after: terraform output backups_bucket
+backups_bucket: ""

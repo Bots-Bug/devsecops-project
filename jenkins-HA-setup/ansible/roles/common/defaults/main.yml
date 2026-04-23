@@ -1,0 +1,20 @@
+---
+# Default values for the common role
+# Override in group_vars or with -e at runtime
+
+java_version: "21.0.11.10.1"
+java_home: "/opt/java/amazon-corretto-{{ java_version }}-linux-x64"
+java_tarball: "amazon-corretto-{{ java_version }}-linux-x64.tar.gz"
+java_download_url: "https://corretto.aws/downloads/resources/{{ java_version }}/{{ java_tarball }}"
+
+base_packages:
+  - git
+  - wget
+  - curl
+  - jq
+  - unzip
+  - tar
+  - nfs-utils
+  - amazon-efs-utils
+  - fontconfig
+  - dejavu-sans-fonts

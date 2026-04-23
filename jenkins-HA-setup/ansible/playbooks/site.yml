@@ -1,0 +1,11 @@
+---
+# Main playbook — runs master first, then agents
+# Usage:
+#   ansible-playbook playbooks/site.yml \
+#     -e "efs_id=fs-xxx efs_ap_id=fsap-xxx backups_bucket=my-bucket"
+
+- name: Configure Jenkins Master
+  import_playbook: master.yml
+
+- name: Configure Jenkins Linux Agents
+  import_playbook: linux_agent.yml

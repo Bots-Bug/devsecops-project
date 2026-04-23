@@ -476,3 +476,55 @@ resource "aws_cloudwatch_log_group" "jenkins_agents" {
 
   tags = var.common_tags
 }
+
+# ─── IAM Role: Bastion ────────────────────────────────────────────────────
+# Bastion runs Ansible. Ansible dynamic inventory needs ec2:Describe* to
+# discover instances by tag. Read-only, no write permissions.
+
+resource "aws_iam_role" "bastion" {
+  name = "${local.name_prefix}-bastion-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+    }]
+  })
+
+  tags = merge(var.common_tags, {
+    Name = "${local.name_prefix}-bastion-role"
+  })
+}
+
+resource "aws_iam_instance_profile" "bastion" {
+  name = "${local.name_prefix}-bastion-profile"
+  role = aws_iam_role.bastion.name
+}
+
+resource "aws_iam_role_policy" "bastion_ec2_read" {
+  name = "${local.name_prefix}-bastion-ec2-read"
+  role = aws_iam_role.bastion.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "EC2ReadForAnsibleInventory"
+      Effect = "Allow"
+      Action = [
+        "ec2:DescribeInstances",
+        "ec2:DescribeTags",
+        "ec2:DescribeRegions",
+        "ec2:DescribeAvailabilityZones"
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
+# SSM for passwordless access to bastion (optional but useful)
+resource "aws_iam_role_policy_attachment" "bastion_ssm" {
+  role       = aws_iam_role.bastion.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
