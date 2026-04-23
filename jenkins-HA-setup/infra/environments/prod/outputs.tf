@@ -3,23 +3,30 @@ output "vpc_id" {
 }
 
 output "bastion_public_ip" {
-  description = "SSH to this IP to access bastion host"
+  description = "SSH: ssh ec2-user@IP -i ~/.ssh/jenkins-prod-keypair.pem"
   value       = module.compute.bastion_public_ip
 }
 
 output "jenkins_master_private_ip" {
-  description = "Jenkins master IP (accessible only via VPN or bastion)"
-  value       = module.compute.jenkins_master_private_ip
+  value = module.compute.jenkins_master_private_ip
+}
+
+output "jenkins_master_id" {
+  description = "For SSM: aws ssm start-session --target ID"
+  value       = module.compute.jenkins_master_id
 }
 
 output "jenkins_url" {
-  description = "Jenkins internal URL via ALB (requires VPN)"
-  value       = "https://${module.compute.alb_dns_name}"
+  description = "Open in browser (HTTP, no VPN needed for POC)"
+  value       = "http://${module.compute.alb_dns_name}/"
+}
+
+output "alb_dns_name" {
+  value = module.compute.alb_dns_name
 }
 
 output "efs_id" {
-  description = "EFS filesystem ID for Jenkins home"
-  value       = module.compute.efs_id
+  value = module.compute.efs_id
 }
 
 output "artifacts_bucket" {

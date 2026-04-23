@@ -1,133 +1,153 @@
 #!/bin/bash
-# ─────────────────────────────────────────────────────────────────────────
-# Jenkins Linux Agent — User Data Script
-# OS: Amazon Linux 2
-#
-# Terraform template variables:
-#   ${jenkins_master_private_ip} — private IP of Jenkins master
-#   ${aws_region}                — AWS region
-#   ${environment}               — environment name
-#   ${agent_number}              — 1, 2, 3 etc.
-#
-# Shell variables: $$ prefix (becomes $ on the EC2 instance)
-# ─────────────────────────────────────────────────────────────────────────
+exec > /var/log/jenkins-agent-userdata.log 2>&1
+set -e
 
-set -euxo pipefail
+echo "=== Jenkins Linux Agent UserData started: $(date) ==="
 
 MASTER_IP="${jenkins_master_private_ip}"
 AWS_REGION="${aws_region}"
 ENVIRONMENT="${environment}"
 AGENT_NUMBER="${agent_number}"
-AGENT_NAME="linux-agent-$$AGENT_NUMBER"
+AGENT_NAME="linux-agent-$AGENT_NUMBER"
 AGENT_HOME="/home/jenkins-agent"
 
-# ── System Update & Packages ──────────────────────────────────────────────
+JAVA_HOME="/opt/java/amazon-corretto-21.0.11.10.1-linux-x64"
+
+echo "MASTER_IP  = $MASTER_IP"
+echo "AGENT_NAME = $AGENT_NAME"
+
+# ── STEP 1: Base packages ────────────────────────────────────────────────
 yum update -y
-yum install -y \
-  curl \
-  git \
-  jq \
-  unzip \
-  wget \
-  java-17-amazon-corretto-headless
 
-# Install Java (same as master)
-amazon-linux-extras enable corretto17 || true
-yum install -y java-17-amazon-corretto-headless
+# 🔥 IMPORTANT: includes fonts + awscli
+yum install -y git wget curl jq unzip tar \
+               nfs-utils amazon-efs-utils awscli \
+               fontconfig dejavu-sans-fonts
 
-# AWS CLI v2
-curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
-unzip -q /tmp/awscliv2.zip -d /tmp/
-/tmp/aws/install --update
-rm -rf /tmp/aws /tmp/awscliv2.zip
+# ── STEP 2: Install Java 21 ──────────────────────────────────────────────
+echo "=== Installing Java 21 ==="
 
-# ── Create Agent User ─────────────────────────────────────────────────────
-useradd -m -u 1500 -s /bin/bash jenkins-agent || true
-mkdir -p "$$AGENT_HOME/workspace"
-chown -R jenkins-agent:jenkins-agent "$$AGENT_HOME"
+mkdir -p /opt/java
+cd /opt/java
 
-# ── Wait for Jenkins Master ────────────────────────────────────────────────
-echo "Waiting for Jenkins master at $$MASTER_IP..."
-ATTEMPT=0
-until curl -sf "http://$$MASTER_IP:8080/login" > /dev/null 2>&1; do
-  ATTEMPT=$$((ATTEMPT + 1))
-  if [ "$$ATTEMPT" -ge 60 ]; then
-    echo "ERROR: Jenkins master not reachable after 5 minutes"
-    exit 1
-  fi
-  echo "Attempt $$ATTEMPT/60 — waiting for master..."
-  sleep 5
-done
+wget -q https://corretto.aws/downloads/resources/21.0.11.10.1/amazon-corretto-21.0.11.10.1-linux-x64.tar.gz
+tar -xzf amazon-corretto-21.0.11.10.1-linux-x64.tar.gz
+rm -f amazon-corretto-21.0.11.10.1-linux-x64.tar.gz
 
-# ── Download Agent JAR ────────────────────────────────────────────────────
-curl -sf "http://$$MASTER_IP:8080/jnlpJars/agent.jar" \
-  -o "$$AGENT_HOME/agent.jar"
-chown jenkins-agent:jenkins-agent "$$AGENT_HOME/agent.jar"
+echo "export JAVA_HOME=$JAVA_HOME" >> /etc/profile
+echo 'export PATH=$JAVA_HOME/bin:$PATH' >> /etc/profile
+export PATH=$JAVA_HOME/bin:$PATH
 
-# ── Fetch Agent Secret from Secrets Manager ───────────────────────────────
-# The secret is stored here AFTER Jenkins master creates the node.
-# This script polls every 30 seconds until the secret is available.
-# To populate: see Step 10 in the setup guide.
-#
-# SECRET PATH: jenkins-{env}/agents/{agent-name}/secret
-# SCALE NOTE: if you add more agents, the secret path uses the agent name
-#             which matches the node name you create in Jenkins UI
+java -version
 
-AGENT_SECRET=""
-ATTEMPT=0
-while [ -z "$$AGENT_SECRET" ]; do
-  ATTEMPT=$$((ATTEMPT + 1))
-  if [ "$$ATTEMPT" -ge 60 ]; then
-    echo "Agent secret not found after 30 minutes. Service will start without it."
-    echo "Manually run: systemctl start jenkins-agent after storing the secret."
+# ── STEP 3: Create user safely ───────────────────────────────────────────
+echo "=== Creating agent user ==="
+
+if ! id "jenkins-agent" &>/dev/null; then
+  useradd -m -s /bin/bash jenkins-agent
+fi
+
+mkdir -p $AGENT_HOME/workspace
+chown -R jenkins-agent:jenkins-agent $AGENT_HOME
+
+# ── STEP 4: Disable firewall ─────────────────────────────────────────────
+systemctl stop firewalld 2>/dev/null || true
+systemctl disable firewalld 2>/dev/null || true
+
+# ── STEP 5: Wait for Jenkins master ──────────────────────────────────────
+echo "=== Waiting for Jenkins master ==="
+
+ATTEMPT=1
+MASTER_READY=false
+
+while [ $ATTEMPT -le 90 ]; do
+  if curl -sf "http://$MASTER_IP:8080/login" > /dev/null 2>&1; then
+    MASTER_READY=true
+    echo "Master is reachable"
     break
   fi
+  echo "Waiting for master ($ATTEMPT/90)..."
+  ATTEMPT=$((ATTEMPT + 1))
+  sleep 10
+done
 
-  AGENT_SECRET=$$(aws secretsmanager get-secret-value \
-    --secret-id "jenkins-$$ENVIRONMENT/agents/$$AGENT_NAME/secret" \
-    --region "$$AWS_REGION" \
+if [ "$MASTER_READY" != "true" ]; then
+  echo "ERROR: Jenkins master not reachable"
+  exit 1
+fi
+
+# ── STEP 6: Download agent.jar ───────────────────────────────────────────
+echo "=== Downloading agent.jar ==="
+
+curl -f "http://$MASTER_IP:8080/jnlpJars/agent.jar" \
+  -o $AGENT_HOME/agent.jar
+
+chown jenkins-agent:jenkins-agent $AGENT_HOME/agent.jar
+
+# ── STEP 7: Fetch agent secret ───────────────────────────────────────────
+echo "=== Fetching agent secret ==="
+
+AGENT_SECRET=""
+ATTEMPT=1
+
+while [ $ATTEMPT -le 120 ]; do
+  AGENT_SECRET=$(aws secretsmanager get-secret-value \
+    --secret-id "jenkins-$ENVIRONMENT/agents/$AGENT_NAME/secret" \
+    --region "$AWS_REGION" \
     --query SecretString \
     --output text 2>/dev/null | jq -r '.secret // empty' 2>/dev/null || echo "")
 
-  if [ -z "$$AGENT_SECRET" ]; then
-    echo "Attempt $$ATTEMPT/60 — secret not yet available, waiting 30s..."
-    sleep 30
+  if [ -n "$AGENT_SECRET" ]; then
+    echo "Secret retrieved"
+    break
   fi
+
+  echo "Waiting for secret ($ATTEMPT/120)..."
+  ATTEMPT=$((ATTEMPT + 1))
+  sleep 30
 done
 
-# ── Create Systemd Service for Agent ──────────────────────────────────────
-cat > /etc/systemd/system/jenkins-agent.service <<SVCFILE
+if [ -z "$AGENT_SECRET" ]; then
+  echo "ERROR: Failed to retrieve agent secret"
+  exit 1
+fi
+
+# ── STEP 8: Systemd service ──────────────────────────────────────────────
+echo "=== Creating systemd service ==="
+
+cat > /etc/systemd/system/jenkins-agent.service <<EOF
 [Unit]
-Description=Jenkins Agent $$AGENT_NAME
+Description=Jenkins Agent $AGENT_NAME
 After=network-online.target
-Wants=network-online.target
 
 [Service]
-Type=simple
 User=jenkins-agent
-Group=jenkins-agent
-WorkingDirectory=$$AGENT_HOME
-ExecStart=/usr/bin/java \
-  -jar $$AGENT_HOME/agent.jar \
-  -url http://$$MASTER_IP:8080/ \
-  -name $$AGENT_NAME \
-  -secret $$AGENT_SECRET \
-  -workDir $$AGENT_HOME/workspace \
-  -failIfWorkDirIsMissing
+WorkingDirectory=$AGENT_HOME
+Environment="JAVA_HOME=$JAVA_HOME"
+ExecStart=$JAVA_HOME/bin/java -jar $AGENT_HOME/agent.jar \\
+  -url http://$MASTER_IP:8080/ \\
+  -name $AGENT_NAME \\
+  -secret $AGENT_SECRET \\
+  -workDir $AGENT_HOME/workspace
 Restart=always
-RestartSec=30
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-SVCFILE
+EOF
+
+# ── STEP 9: Start agent ──────────────────────────────────────────────────
+echo "=== Starting Jenkins agent ==="
 
 systemctl daemon-reload
+systemctl enable jenkins-agent
+systemctl start jenkins-agent
 
-if [ -n "$$AGENT_SECRET" ]; then
-  systemctl enable jenkins-agent
-  systemctl start jenkins-agent
-  echo "Jenkins agent $$AGENT_NAME started."
-else
-  echo "Systemd service created. Start manually after storing the secret:"
-  echo "  systemctl start jenkins-agent"
-fi
+sleep 5
+systemctl status jenkins-agent --no-pager || true
+
+echo ""
+echo "============================================================"
+echo " Jenkins Agent setup COMPLETE: $(date)"
+echo " Agent Name: $AGENT_NAME"
+echo "============================================================"

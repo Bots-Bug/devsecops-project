@@ -192,102 +192,62 @@ resource "aws_flow_log" "main" {
 # NACLs are stateless - you need both inbound and outbound rules
 # They are a second layer of defense AFTER Security Groups
 
-# Public Subnet NACL
-resource "aws_network_acl" "public" {
-  vpc_id     = aws_vpc.main.id
-  subnet_ids = aws_subnet.public[*].id
+  resource "aws_network_acl" "public" {
+    vpc_id     = aws_vpc.main.id
+    subnet_ids = aws_subnet.public[*].id
 
-  # Inbound: Allow HTTPS from anywhere (for corporate VPN endpoints if needed)
-  ingress {
-    rule_no    = 100
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 443
-    to_port    = 443
+    # ── Inbound: HTTP port 80 (for internet-facing ALB in POC) ───────────────
+    # PRODUCTION: remove this rule when ALB is switched to internal=true
+    ingress {
+      rule_no    = 90
+      protocol   = "tcp"
+      action     = "allow"
+      cidr_block = "0.0.0.0/0"
+      from_port  = 80
+      to_port    = 80
+    }
+
+    # Inbound: HTTPS port 443
+    ingress {
+      rule_no    = 100
+      protocol   = "tcp"
+      action     = "allow"
+      cidr_block = "0.0.0.0/0"
+      from_port  = 443
+      to_port    = 443
+    }
+
+    # Inbound: SSH for Bastion (restrict to your IP in production)
+    ingress {
+      rule_no    = 110
+      protocol   = "tcp"
+      action     = "allow"
+      cidr_block = "0.0.0.0/0"
+      from_port  = 22
+      to_port    = 22
+    }
+
+    # Inbound: Ephemeral/return traffic
+    ingress {
+      rule_no    = 120
+      protocol   = "tcp"
+      action     = "allow"
+      cidr_block = "0.0.0.0/0"
+      from_port  = 1024
+      to_port    = 65535
+    }
+
+    # Outbound: Allow all
+    egress {
+      rule_no    = 100
+      protocol   = "-1"
+      action     = "allow"
+      cidr_block = "0.0.0.0/0"
+      from_port  = 0
+      to_port    = 0
+    }
+
+    tags = merge(var.common_tags, {
+      Name = "${local.name_prefix}-public-nacl"
+    })
   }
-
-  # Inbound: Allow SSH from corporate IP range only (for bastion)
-  ingress {
-    rule_no    = 110
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"  # Replace with your corporate IP: "203.0.113.0/24"
-    from_port  = 22
-    to_port    = 22
-  }
-
-  # Inbound: Allow return traffic (ephemeral ports)
-  ingress {
-    rule_no    = 120
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 1024
-    to_port    = 65535
-  }
-
-  # Outbound: Allow all outbound (SGs handle fine-grained control)
-  egress {
-    rule_no    = 100
-    protocol   = "-1"
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 0
-    to_port    = 0
-  }
-
-  tags = merge(var.common_tags, {
-    Name = "${local.name_prefix}-public-nacl"
-  })
-}
-
-# Private Subnet NACL
-resource "aws_network_acl" "private" {
-  vpc_id     = aws_vpc.main.id
-  subnet_ids = aws_subnet.private[*].id
-
-  # Inbound: Allow all traffic from within VPC
-  ingress {
-    rule_no    = 100
-    protocol   = "-1"
-    action     = "allow"
-    cidr_block = var.vpc_cidr
-    from_port  = 0
-    to_port    = 0
-  }
-
-  # Inbound: Allow return traffic from internet (via NAT)
-  ingress {
-    rule_no    = 110
-    protocol   = "tcp"
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 1024
-    to_port    = 65535
-  }
-
-  # DENY: Explicitly block direct internet access to private subnets
-  ingress {
-    rule_no    = 900
-    protocol   = "-1"
-    action     = "deny"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 0
-    to_port    = 0
-  }
-
-  # Outbound: Allow all outbound from private subnets
-  egress {
-    rule_no    = 100
-    protocol   = "-1"
-    action     = "allow"
-    cidr_block = "0.0.0.0/0"
-    from_port  = 0
-    to_port    = 0
-  }
-
-  tags = merge(var.common_tags, {
-    Name = "${local.name_prefix}-private-nacl"
-  })
-}

@@ -73,17 +73,14 @@ resource "aws_efs_mount_target" "jenkins_home" {
 resource "aws_efs_access_point" "jenkins" {
   file_system_id = aws_efs_file_system.jenkins_home.id
 
-  posix_user {
-    uid = 997  # jenkins user UID on Amazon Linux 2
-    gid = 997
-  }
+
 
   root_directory {
     path = "/jenkins"
     creation_info {
-      owner_uid   = 997
-      owner_gid   = 997
-      permissions = "750"
+      owner_uid   = 0
+      owner_gid   = 0
+      permissions = "755"
     }
   }
 

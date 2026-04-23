@@ -47,12 +47,13 @@ module "network" {
 module "security" {
   source = "../../../modules/security"
 
-  project              = var.project
-  environment          = var.environment
-  vpc_id               = module.network.vpc_id
-  vpc_cidr             = module.network.vpc_cidr
-  corporate_ip_ranges  = var.corporate_ip_ranges
-  common_tags          = local.common_tags
+  project             = var.project
+  environment         = var.environment
+  vpc_id              = module.network.vpc_id
+  vpc_cidr            = module.network.vpc_cidr
+  aws_region          = var.aws_region    # required for KMS key policy
+  corporate_ip_ranges = var.corporate_ip_ranges
+  common_tags         = local.common_tags
 }
 
 # ─── Module: Jenkins (IAM, S3, Secrets, Backup) ───────────────────────────
