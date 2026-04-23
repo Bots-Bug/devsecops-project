@@ -11,10 +11,10 @@ jenkins_jvm_opts: "-Xmx2g -Xms512m -Djava.awt.headless=true -Duser.timezone=UTC"
 # Set these when running the playbook:
 #   ansible-playbook playbooks/master.yml -e "efs_id=fs-xxx efs_ap_id=fsap-xxx"
 # Or set them here after first terraform apply
-efs_id: ""           # Fill after: terraform output efs_id
-efs_ap_id: ""        # Fill after: terraform output efs_access_point_id
+efs_id: "fs-0ad17c2ad430444e9"           # Fill after: terraform output efs_id
+efs_ap_id: "fsap-0ebfb4d5019465b53"        # Fill after: terraform output efs_access_point_id
 efs_mount_point: "{{ jenkins_home }}"
 
 # S3 backup bucket
 # Fill after: terraform output backups_bucket
-backups_bucket: ""
+backups_bucket: "jenkins-prod-jenkins-backups-433214487294"
