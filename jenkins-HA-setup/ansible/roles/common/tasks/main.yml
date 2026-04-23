@@ -12,16 +12,18 @@
   timeout: 120
 
 - name: Update all packages
-  yum:
+  ansible.builtin.yum:
     name: "*"
     state: latest
     update_cache: true
+    use_backend: yum
   tags: packages
 
 - name: Install base packages
-  yum:
+  ansible.builtin.yum:
     name: "{{ base_packages }}"
     state: present
+    use_backend: yum
   tags: packages
 
 - name: Disable and stop firewalld

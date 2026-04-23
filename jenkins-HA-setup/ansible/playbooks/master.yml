@@ -12,7 +12,7 @@
 #     -e "efs_id=fs-0abc123 efs_ap_id=fsap-0abc123 backups_bucket=jenkins-prod-backups-123456"
 
 - name: Configure Jenkins Master
-  hosts: jenkins-master      # Matches tag Role: jenkins-master via dynamic inventory
+  hosts: jenkins_master      # Matches tag Role: jenkins-master via dynamic inventory
   become: true               # sudo for package installs and service management
   gather_facts: true
 

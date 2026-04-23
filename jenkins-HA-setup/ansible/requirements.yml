@@ -1,6 +1,15 @@
+# Pin collection versions compatible with ansible-core 2.16 (ansible 9.x)
 # Install with: ansible-galaxy collection install -r requirements.yml
+
 collections:
   - name: amazon.aws
-    version: ">=7.0.0"
+    version: "8.0.0"       # Requires ansible-core 2.15+ — we have 2.16
+
   - name: community.general
-    version: ">=8.0.0"
+    version: "9.0.0"       # community.general 12+ removed yaml callback
+                           # version 9.x is stable and compatible
+  - name: community.windows
+    version: "2.3.0"       # For Windows modules: win_chocolatey, win_service etc.
+
+  - name: ansible.windows
+    version: "2.4.0"       # Core Windows modules: win_file, win_command, win_get_url
